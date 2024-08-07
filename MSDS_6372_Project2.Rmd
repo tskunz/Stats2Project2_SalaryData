@@ -1,0 +1,78 @@
+---
+title: "MSDS 6372 Project2"
+author: "TK"
+date: "2024-08-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(car)
+library(caret)  # For data splitting and confusion matrix
+
+# Load and clean data
+adult = read.csv("C:/Users/tkchu/Downloads/adult/adult.data.csv", stringsAsFactors = TRUE)
+adult = na.omit(adult)
+head(adult)
+
+# Create training and validation split
+set.seed(123)  # For reproducibility
+trainIndex <- createDataPartition(adult$Above.50K, p = 0.8, list = FALSE)
+adult_train <- adult[trainIndex, ]
+adult_val <- adult[-trainIndex, ]
+
+# Fit logistic regression model on the training set
+log.model <- glm(Above.50K ~ Age + Working.Class + Education.Num + Marital.Status + Race + Sex + Capital.Gain + Capital.Loss + Hours.Per.Week, 
+                 family = "binomial", data = adult_train)
+
+summary(log.model)
+
+# Check for VIFs
+vif(log.model)
+
+# Create a binary outcome variable in the validation set
+adult_val$Above.50KBin = ifelse(adult_val$Above.50K == " <=50K", 0, 1)
+
+# Predict probabilities on the validation set
+adult_val$predicted_prob <- predict(log.model, newdata = adult_val, type = "response")
+
+# Convert probabilities to binary predictions using a threshold of 0.5
+adult_val$predicted_class <- ifelse(adult_val$predicted_prob > 0.5, 1, 0)
+
+# Generate confusion matrix to evaluate model performance
+conf_matrix <- confusionMatrix(factor(adult_val$predicted_class), factor(adult_val$Above.50KBin))
+print(conf_matrix)
+
+# Plot the effects using the validation set
+adult_val %>%
+  ggplot(aes(x = Age, y = predicted_prob)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Effects Curve Age vs. Model Prediction", x = "Age", y = "Model Predicted Probabilities") +
+  theme_minimal()
+
+adult_val %>%
+  ggplot(aes(x = Education.Num, y = predicted_prob)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Effects Curve Education Level vs. Model Prediction", x = "Education Level", y = "Model Predicted Probabilities") +
+  theme_minimal()
+
+adult_val %>%
+  ggplot(aes(x = Hours.Per.Week, y = predicted_prob)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Effects Curve Hours Per Week vs. Model Prediction", x = "Hours Per Week", y = "Model Predicted Probabilities") +
+  theme_minimal()
+
+# Using Age and the binary outcome variable in the validation set
+adult_val %>%
+  ggplot(aes(x = Age, y = Above.50KBin)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Loess Curve Age vs. Above 50K", x = "Age", y = "Above 50K") +
+  geom_point() +
+  theme_minimal()
+
+```
