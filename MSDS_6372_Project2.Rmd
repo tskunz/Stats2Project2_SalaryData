@@ -9,16 +9,18 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+Simple Model
 ```{r}
 # Load libraries
 library(tidyverse)
 library(car)
-library(caret)  # For data splitting and confusion matrix
+library(caret)
 
 # Load and clean data
-adult = read.csv("C:/Users/tkchu/Downloads/adult/adult.data.csv", stringsAsFactors = TRUE)
+adult = read.csv("https://raw.githubusercontent.com/tskunz/Stats2Project2_SalaryData/main/adult.data%20(2).csv", stringsAsFactors = TRUE)
+
 adult = na.omit(adult)
-head(adult)
+
 
 # Create training and validation split
 set.seed(123)  # For reproducibility
@@ -26,9 +28,18 @@ trainIndex <- createDataPartition(adult$Above.50K, p = 0.8, list = FALSE)
 adult_train <- adult[trainIndex, ]
 adult_val <- adult[-trainIndex, ]
 
+summary(adult)
+
 # Fit logistic regression model on the training set
-log.model <- glm(Above.50K ~ Age + Working.Class + Education.Num + Marital.Status + Race + Sex + Capital.Gain + Capital.Loss + Hours.Per.Week, 
-                 family = "binomial", data = adult_train)
+log.model <- glm(Above.50K ~ Age  + Education.Num  + Race + Sex + Capital.Gain + Capital.Loss + Hours.Per.Week + Occupation + Marital.Status, family = "binomial", data = adult_train)
+
+# Country is omitted as it has a marginal effect to help predict about 6 TP right and 4 FN better
+
+# Occupation and Working Class are almost perfectly correlated and break the model. Occuaption has a slightly better model so Occupation is used.
+
+#Education and Education.num are also almost perfectly correlated, and num has a better predictions.
+
+# Predictions on the models are actually worse when logging the results of the Capital Loss and Capital Gains.
 
 summary(log.model)
 
@@ -48,6 +59,119 @@ adult_val$predicted_class <- ifelse(adult_val$predicted_prob > 0.5, 1, 0)
 conf_matrix <- confusionMatrix(factor(adult_val$predicted_class), factor(adult_val$Above.50KBin))
 print(conf_matrix)
 
+# Changing the threshold .25 gives the best balance of 80% Sensitivity and Specificity
+# Create a binary outcome variable in the validation set
+adult_val$T25Above.50KBin = ifelse(adult_val$Above.50K == " <=50K", 0, 1)
+
+# Convert probabilities to binary predictions using a threshold of 0.25
+adult_val$T25predicted_class <- ifelse(adult_val$predicted_prob > 0.25, 1, 0)
+
+# Generate confusion matrix to evaluate model performance
+conf_matrix25 <- confusionMatrix(factor(adult_val$T25predicted_class), factor(adult_val$T25Above.50KBin))
+print(conf_matrix25)
+
+# threshold at 40
+adult_val$T40Above.50KBin = ifelse(adult_val$Above.50K == " <=50K", 0, 1)
+
+# Convert probabilities to binary predictions using a threshold of 0.4
+adult_val$T40predicted_class <- ifelse(adult_val$predicted_prob > 0.4, 1, 0)
+
+# Generate confusion matrix to evaluate model performance
+conf_matrix40 <- confusionMatrix(factor(adult_val$T40predicted_class), factor(adult_val$T40Above.50KBin))
+print(conf_matrix40)
+```
+
+Loess Plots
+```{r}
+# Using numeric explanatory variables and the binary outcome variable in the validation set
+adult_val %>%
+  ggplot(aes(x = Age, y = Above.50KBin)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Loess Curve Age vs. Above 50K", x = "Age", y = "Above 50K") +
+  geom_point() +
+  theme_minimal()
+
+adult_val %>%
+  ggplot(aes(x = Education.Num, y = Above.50KBin)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Loess Curve Age vs. Above 50K", x = "Education.Num", y = "Above 50K") +
+  geom_point() +
+  theme_minimal()
+
+# Note logging the capital gains and losses actually cause the actual model to perform worse than untransformed data. Because the majority of the individuals have no capital gains or losses, the Loess plot cannot generate a proper curve due to the large cluster at 0, when filtering out the 0's for EDA purposes only, it appears that a high degree of capital gains is associated with an income over $50K, while a high degree of losses is an indicator of making over $50K up to a point before dropping off.
+adult_val %>%
+  filter(Capital.Gain > 0) %>%
+  ggplot(aes(x = Capital.Gain, y = Above.50KBin)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Loess Curve Capital Gain vs. Above 50K", x = "Capital Gain", y = "Above 50K") +
+  geom_point() +
+  theme_minimal()
+
+adult_val %>%
+  filter(Capital.Loss > 0) %>%
+  ggplot(aes(x = Capital.Loss, y = Above.50KBin)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Loess Curve Capital Loss vs. Above 50K", x = "Capital Loss", y = "Above 50K") +
+  geom_point() +
+  theme_minimal()
+
+adult_val %>%
+  ggplot(aes(x = Hours.Per.Week, y = Above.50KBin)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Loess Curve Hours per Week vs. Above 50K", x = "Hours per Week", y = "Above 50K") +
+  geom_point() +
+  theme_minimal()
+
+#Loess Plots to compare Sex vs the previous graphs
+adult_val %>%
+  ggplot(aes(x = Age, y = Above.50KBin, color = Sex)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Loess Curve Age vs. Above 50K", x = "Age", y = "Above 50K") +
+  geom_point() +
+  theme_minimal() + 
+  facet_wrap(~Sex)
+
+adult_val %>%
+  ggplot(aes(x = Education.Num, y = Above.50KBin, color = Sex)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Loess Curve Age vs. Above 50K", x = "Education.Num", y = "Above 50K") +
+  geom_point() +
+  theme_minimal() +
+  facet_wrap(~Sex)
+
+adult_val %>%
+  filter(Capital.Gain > 0) %>%
+  ggplot(aes(x = Capital.Gain, y = Above.50KBin, color = Sex)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Loess Curve Capital Gain vs. Above 50K", x = "Capital Gain", y = "Above 50K") +
+  geom_point() +
+  theme_minimal() +
+  facet_wrap(~Sex) 
+
+adult_val %>%
+  filter(Capital.Loss > 0) %>%
+  ggplot(aes(x = Capital.Loss, y = Above.50KBin, color = Sex)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Loess Curve Capital Loss vs. Above 50K", x = "Capital Loss", y = "Above 50K") +
+  geom_point() +
+  theme_minimal() +
+  facet_wrap(~Sex)
+
+adult_val %>%
+  ggplot(aes(x = Hours.Per.Week, y = Above.50KBin, color = Sex)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Loess Curve Hours per Week vs. Above 50K", x = "Hours per Week", y = "Above 50K") +
+  geom_point() +
+  theme_minimal()+
+  facet_wrap(~Sex)
+
+```
+
+
+
+Effects Plots
+
+```{r}
 # Plot the effects using the validation set
 adult_val %>%
   ggplot(aes(x = Age, y = predicted_prob)) +
@@ -67,12 +191,82 @@ adult_val %>%
   labs(title = "Effects Curve Hours Per Week vs. Model Prediction", x = "Hours Per Week", y = "Model Predicted Probabilities") +
   theme_minimal()
 
-# Using Age and the binary outcome variable in the validation set
+#see prior note in the Loess curves about the capital gains and losses. The cluster at 0 was removed due to the largely skewed number
+
 adult_val %>%
-  ggplot(aes(x = Age, y = Above.50KBin)) +
+  filter(Capital.Gain > 0) %>%
+  ggplot(aes(x = Capital.Gain, y = predicted_prob)) +
   geom_smooth(method = "loess", se = FALSE, color = "blue") + 
-  labs(title = "Loess Curve Age vs. Above 50K", x = "Age", y = "Above 50K") +
+  labs(title = "Effects Curve Capital Gain vs. Predicted Prob", x = "Capital Gain", y = "Predicted Prob") +
   geom_point() +
   theme_minimal()
+
+adult_val %>%
+  filter(Capital.Loss > 0) %>%
+  ggplot(aes(x = Capital.Loss, y = predicted_prob)) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + 
+  labs(title = "Effects Curve Capital Loss vs. Predicted Prob", x = "Capital Loss", y = "Predicted Prob") +
+  geom_point() +
+  theme_minimal()
+
+
+# using the graphs from code similar to the lecture files for effects plots
+library(sjPlot)
+library(sjmisc)
+plot_model(log.model,type="pred",terms=c("Age"))
+plot_model(log.model,type="pred",terms=c("Education.Num"))
+plot_model(log.model,type="pred",terms=c("Hours.Per.Week"))
+```
+
+Complex Model - Obj 2
+```{r}
+library(pROC)
+# Create training and validation split
+
+# Fit logistic regression model on the training set
+log.model.complex <- glm(Above.50K ~ poly(Age,2)  + Education.Num  + Race + Sex + Capital.Gain + Capital.Loss + Hours.Per.Week + Occupation + Marital.Status + Age:Sex + Sex:Marital.Status + Sex:Hours.Per.Week, family = "binomial", data = adult_train)
+
+# Country is omitted as it has a marginal effect to help predict about 6 TP right and 4 FN better
+
+# Occupation and Working Class are almost perfectly correlated and break the model. Occuaption has a slightly better model so Occupation is used.
+
+#Education and Education.num are also almost perfectly correlated, and num has a better predictions.
+
+# Predictions on the models are actually worse when logging the results of the Capital Loss and Capital Gains.
+
+summary(log.model.complex)
+
+
+# Create a binary outcome variable in the validation set
+adult_val$Above.50KBin = ifelse(adult_val$Above.50K == " <=50K", 0, 1)
+
+# Predict probabilities on the validation set
+adult_val$predicted_prob_complex <- predict(log.model.complex, newdata = adult_val, type = "response")
+
+# Convert probabilities to binary predictions using a threshold of 0.5
+adult_val$predicted_class_complex <- ifelse(adult_val$predicted_prob_complex > 0.5, 1, 0)
+
+# Generate confusion matrix to evaluate model performance
+conf_matrix_complex <- confusionMatrix(factor(adult_val$predicted_class_complex), factor(adult_val$Above.50KBin))
+print(conf_matrix_complex)
+AIC(log.model.complex)
+```
+
+ROC Curves
+```{r}
+simple.predprobs<-predict(log.model,adult_val,type="response")
+complex.predprobs<-predict(log.model.complex,adult_val,type="response")
+adult_val$Above.50K
+simple.roc<-roc(response=factor(adult_val$Above.50K),predictor=simple.predprobs,levels= c(" <=50K", " >50K"), direction = "<")
+complex1.roc<-roc(response=Rose$Survived2,predictor=complex1.predprobs,levels=c("Perished","Survived"))
+#Note if using a caret model make sure to only feed one set of predicted probabilies. Caret models provide both category prediction so you have to pull the one you need.
+
+plot(simple.roc)
+plot(complex1.roc,print.thres="best",col="red",add=T,legend=T)
+legend("bottomright",
+       legend=c("Simple", "Complex"),
+       col=c("black", "red"),
+       lwd=4, cex =1, xpd = TRUE, horiz = FALSE)
+
 
 ```
